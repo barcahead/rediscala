@@ -30,6 +30,20 @@ object MultiBulkConverter {
     }).getOrElse(Seq.empty)
   }
 
+  def toNestedSeqByteString[R](reply: MultiBulk)(implicit deserializer: ByteStringDeserializer[R]): Seq[Seq[R]] = {
+    reply.responses.map {
+      r => {
+        r.map {
+          case sub: MultiBulk => {
+            sub.responses.map (subr => {
+              subr.map(reply => deserializer.deserialize(reply.toByteString))
+            }).getOrElse(Seq.empty)
+          }
+          case _ => Seq.empty
+        }
+    }}.getOrElse(Seq.empty)
+  }
+
   def toSeqTuple2ByteStringDouble[R](reply: MultiBulk)(implicit deserializer: ByteStringDeserializer[R]): Seq[(R, Double)] = {
     reply.responses.map {
       r => {
@@ -90,6 +104,25 @@ object MultiBulkConverter {
     reply.responses.map(r => {
       r.map(_.toString == "1")
     }).getOrElse(Seq.empty)
+  }
+
+  def GeoNeighborWithdist[R](reply: MultiBulk)(implicit deserializer: ByteStringDeserializer[R]): Seq[(R, Double)] = {
+    reply.responses.map {
+      r => {
+        val builder = Seq.newBuilder[(R, Double)]
+        r.foreach {
+          case sub: MultiBulk => {
+            sub.responses.foreach {
+              subr => {
+                builder += ((deserializer.deserialize(subr.head.toByteString), subr.tail.head.toByteString.utf8String.toDouble))
+              }
+            }
+          }
+          case _ => ()
+        }
+        builder.result()
+      }
+    }.getOrElse(Seq.empty)
   }
 
 }
@@ -174,6 +207,10 @@ trait ByteStringDeserializerDefault {
 
   implicit object String extends ByteStringDeserializer[String] {
     def deserialize(bs: ByteString): String = bs.utf8String
+  }
+
+  implicit object Double extends ByteStringDeserializer[Double] {
+    def deserialize(bs: ByteString): Double = bs.utf8String.toDouble
   }
 
 }
